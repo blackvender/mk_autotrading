@@ -1,0 +1,45 @@
+{
+  "session_id": "20251107_125717",
+  "backtest_version": "V4.7",
+  "session_time": "20251107_130513",
+  "strategy_name": "DynamicStrategy_v2_Regime",
+  "backtest_period": "2020-01-28 to 2024-10-31",
+  "total_cycles": 65,
+  "total_trades": 65,
+  "performance": {
+    "total_return": -0.05953137576977603,
+    "annual_return": -0.013633297708666725,
+    "win_rate": 0.4307692307692308,
+    "max_drawdown": 0.9626464557679655,
+    "sharpe_ratio": 0.04459096606061118,
+    "profit_factor": 1.0031182751279415,
+    "total_trades": 65,
+    "winning_trades": 28,
+    "losing_trades": 37,
+    "avg_trade": 0.9679379714560145,
+    "avg_winning_trade": 722.8373156608743,
+    "avg_losing_trade": -545.3115910908066,
+    "largest_winning_trade": 4637.445823468372,
+    "largest_losing_trade": -4594.603749872982,
+    "initial_balance": 6000,
+    "final_equity": 5642.811745381344,
+    "final_cash": 5642.811745381344
+  },
+  "configuration": {
+    "initial_balance": 6000,
+    "commission": 0.0004,
+    "slippage": 0.0001,
+    "risk_per_trade_total": 0.02,
+    "max_leverage": 8,
+    "max_open_entries": 5,
+    "language": "ko"
+  },
+  "folder_structure": {
+    "base_directory": "/home/choibuntu/project_autotrading/backtest_results/session_20251107_125717",
+    "cycle_charts/": "All cycle charts for this session",
+    "overall_backtest_chart.png": "Overall performance chart",
+    "backtest_report.html": "HTML report for this session",
+    "session_info.json": "This file",
+    "session_summary.txt": "Text summary file"
+  }
+}

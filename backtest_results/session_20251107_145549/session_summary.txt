@@ -1,0 +1,23 @@
+=== Backtest Session Summary ===
+
+Session ID: 20251107_145549
+Generated: 20251107_145710
+Period: 2022-06-11 to 2023-12-31
+Strategy: DynamicStrategy_v2_Regime
+
+--- Performance ---
+Initial Balance: $6,000.00
+Final Balance: $8,187.20
+Total Return: +36.45%
+Total Trades: 20
+Win Rate: 60.00%
+Max Drawdown: 21.99%
+Sharpe Ratio: -1.42
+Profit Factor: 2.76
+Total Cycles: 20
+
+--- Backtest Configuration ---
+Initial Balance: $6,000.00
+Commission: 0.0004
+Max Leverage: 8x
+Max Open Entries: 5
