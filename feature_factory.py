@@ -109,55 +109,52 @@ class FeatureFactory:
             df_higher = dfs[tf].copy()
             suffix = f"_{tf}"
             
-            # --- [수정] 'poc', 'regime', 'sr_zone' 관련 지표는 이미 계산했으므로 건너뛰기 ---
-            special_features = ['regime', 'poc', 'support_1d', 'resistance_1d', 
-                                'support_score_1d', 'resistance_score_1d']
-            
-            # [v2.0] 5개 신규 컬럼도 건너뛰기 목록에 추가
-            special_features.extend([
-                'regime_trend_score', 'regime_energy_score', 
-                'regime_reversion_score', 'regime_sr_pressure_score', 
-                'regime_label_1d'
-            ])
-            
-            features_to_calculate = [f for f in features if f not in special_features]
-
-            # 레지스트리 기반 공통 지표 계산
-            df_higher_featured = self._calculate_features(df_higher, features_to_calculate, suffix)
-            
-            # --- [v2.0 수정] 병합할 컬럼 리스트 생성  ---
-            valid_features = [c for c in df_higher_featured.columns if c.endswith(suffix)]
-            
+            # --- [FIX] Duplicate column issue ---
             if tf == '1d':
-                # (기존) poc_1d 추가
-                if 'poc_1d' in df_higher.columns: valid_features.append('poc_1d')
-                
-                # S/R Zone 관련 컬럼 추가 (기존과 동일)
-                sr_cols_to_add = ['support_1d', 'resistance_1d', 'support_score_1d', 'resistance_score_1d']
-                for col in sr_cols_to_add:
-                    if col in df_higher_featured.columns:
-                        valid_features.append(col)
-
-                # [v2.0 신규] 레짐 점수 및 라벨 컬럼 추가
-                # 'regime_1d'는 'regime_label_1d'로 대체됨
-                regime_v2_cols = [
+                # Explicitly define the final set of 1d columns to merge
+                # These columns should already be present in df_higher (dfs['1d'])
+                # after _calculate_sr_zones and _calculate_regime_v2_final
+                valid_features = [
+                    'poc_1d', # if calculated
+                    'support_1d', 'resistance_1d', 'support_score_1d', 'resistance_score_1d',
                     'regime_trend_score', 'regime_energy_score', 
                     'regime_reversion_score', 'regime_sr_pressure_score', 
                     'regime_label_1d'
                 ]
-                for col in regime_v2_cols:
-                    if col in df_higher_featured.columns:
-                        valid_features.append(col)
-            # --- [v2.0 수정 완료] ---
+                # Filter out features that might not have been calculated or are not in df_higher
+                valid_features = [col for col in valid_features if col in df_higher.columns]
+            else:
+                # For other timeframes, calculate features and then select them
+                # --- [수정] 'poc', 'regime', 'sr_zone' 관련 지표는 이미 계산했으므로 건너뛰기 ---
+                special_features = ['regime', 'poc', 'support_1d', 'resistance_1d', 
+                                    'support_score_1d', 'resistance_score_1d']
+                
+                # [v2.0] 5개 신규 컬럼도 건너뛰기 목록에 추가
+                special_features.extend([
+                    'regime_trend_score', 'regime_energy_score', 
+                    'regime_reversion_score', 'regime_sr_pressure_score', 
+                    'regime_label_1d'
+                ])
+                
+                features_to_calculate = [f for f in features if f not in special_features]
+
+                # 레지스트리 기반 공통 지표 계산
+                df_higher_featured = self._calculate_features(df_higher, features_to_calculate, suffix)
+                
+                valid_features = [c for c in df_higher_featured.columns if c.endswith(suffix)]
+            # --- [FIX END] ---
 
             if not valid_features: continue
                 
             # 'timestamp' 컬럼이 df_higher_featured에 있는지 확인
-            if 'timestamp' not in df_higher_featured.columns:
-                df_higher_featured['timestamp'] = df_higher_featured.index
-                
+            if 'timestamp' not in df_higher.columns: # Check df_higher for timestamp
+                df_higher['timestamp'] = df_higher.index
+            
             # 병합 대상 컬럼만 추출하여 정렬
-            merge_subset = df_higher_featured[['timestamp'] + valid_features].sort_values('timestamp')
+            if tf == '1d':
+                merge_subset = df_higher[['timestamp'] + valid_features].sort_values('timestamp')
+            else:
+                merge_subset = df_higher_featured[['timestamp'] + valid_features].sort_values('timestamp')
 
             merged_df = pd.merge_asof(
                 merged_df.sort_values('timestamp'),
@@ -166,10 +163,10 @@ class FeatureFactory:
                 direction='backward'
             )
         
-        merged_df = merged_df.ffill().dropna()
+        merged_df = merged_df.ffill()
+        # merged_df = merged_df.dropna() # Removed dropna()
         print("   [FF] Feature merging complete.")
         return merged_df.reset_index(drop=True)
-
     def _calculate_features(self, df: pd.DataFrame, features: List[str], suffix: str) -> pd.DataFrame:
         """[V4.7 신규] 레지스트리를 사용해 요청된 지표를 동적으로 계산"""
         for feat_name in features:
@@ -550,6 +547,10 @@ class FeatureFactory:
         ]
         
         df_1d['regime_label_1d'] = np.select(conditions, choices, default="Transition") # 기본값 Transition
+
+        # [FIX] Explicitly drop the old 'regime_1d' column if 'regime_label_1d' is calculated
+        if 'regime_1d' in df_1d.columns:
+            df_1d = df_1d.drop(columns=['regime_1d'])
 
         return df_1d
     # --- [v2.0 최종안 구현 완료] ---

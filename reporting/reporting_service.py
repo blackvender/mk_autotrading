@@ -6,8 +6,27 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.font_manager as fm
+import platform
 from reporting.report_models import BacktestResult, TradingCycle
 from utils.data_converter import DataConverter # [V4.6] Resample 함수 사용
+
+# 한글 폰트 설정
+try:
+    if platform.system() == 'Linux':
+        # 폰트 경로 직접 지정
+        font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+        font_prop = fm.FontProperties(fname=font_path)
+        plt.rc('font', family=font_prop.get_name())
+    elif platform.system() == 'Darwin':  # MacOS
+        plt.rc('font', family='AppleGothic')
+    elif platform.system() == 'Windows':  # Windows
+        plt.rc('font', family='Malgun Gothic')
+    
+    # 마이너스 기호 깨짐 방지
+    plt.rcParams['axes.unicode_minus'] = False
+except Exception as e:
+    print(f"⚠️ Korean font not found, some characters may be broken in charts: {e}")
 
 # [V4.6] mplfinance는 이제 리포팅 모듈만 의존합니다.
 try:
@@ -115,19 +134,19 @@ class ReportingService:
         print(f"📁 ReportingService initialized. Session folder: {self.base_dir}")
 
     def _t(self, text: str) -> str:
-        """[V4.11] 텍스트 번역 (회복 메시지 추가)"""
-        if self.language == 'ko':
-            # "Recovered in 12.3h" 같은 동적 문자열 번역
-            if isinstance(text, str) and text.startswith('Recovered in'):
-                try:
-                    hours = text.split(' ')[2]
-                    return f"회복 ({hours})"
-                except:
-                    pass # 아래에서 기본 번역 처리
+        """[V4.11 수정] 차트의 한글 깨짐 현상으로 인해 영문으로 강제 전환"""
+        # if self.language == 'ko':
+        #     # "Recovered in 12.3h" 같은 동적 문자열 번역
+        #     if isinstance(text, str) and text.startswith('Recovered in'):
+        #         try:
+        #             hours = text.split(' ')[2]
+        #             return f"회복 ({hours})"
+        #         except:
+        #             pass # 아래에서 기본 번역 처리
             
-            if text in self.LANGUAGE_MAP.get('ko', {}):
-                 return self.LANGUAGE_MAP.get('ko', {}).get(text, text)
-            return text
+        #     if text in self.LANGUAGE_MAP.get('ko', {}):
+        #          return self.LANGUAGE_MAP.get('ko', {}).get(text, text)
+        #     return text
         
         # 영어일 경우, 'momentum' -> 'Momentum'
         if text in ['momentum', 'reversal', 'unknown', 'RSI_Simple', 'DCA_RSI']:
@@ -519,10 +538,10 @@ class ReportingService:
             
             # --- [FIX V5.8] 'first'/'last' 문자열 대신 lambda 함수 사용 ---
             ohlc_dict = {
-                'open': lambda x: x.iloc[0],  # 'first' -> lambda
+                'open': 'first',  # 'first' -> lambda
                 'high': 'max',
                 'low': 'min',
-                'close': lambda x: x.iloc[-1], # 'last' -> lambda
+                'close': 'last', # 'last' -> lambda
                 'volume': 'sum'
             }
             # --- [FIX V5.8] 수정 완료 ---

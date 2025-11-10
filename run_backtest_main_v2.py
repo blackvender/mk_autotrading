@@ -31,9 +31,10 @@ def main():
     # [v2.0 수정] DataManager가 인식하는 표준 심볼명으로 변경
     symbol = "BTCUSDT" 
     
-    # [v2.0 수정] 1D 스윙 전략 검증을 위해 테스트 기간 연장
-    start_date = "2022-01-01"
-    end_date = "2023-12-31" 
+    # [FIX] 데이터 로딩 시작 날짜와 백테스트 시작 날짜를 분리하여 지표 웜업 기간 확보
+    data_load_start_date = "2021-01-01" # FeatureFactory가 데이터를 로드할 시작 날짜
+    backtest_start_date = "2022-03-01"  # 실제 백테스트를 시작할 날짜
+    backtest_end_date = "2022-12-31"    # 백테스트 종료 날짜
     
     # 전략 및 엔진 설정
     config = {
@@ -51,7 +52,7 @@ def main():
         'max_portfolio_ratio': 0.6
     }
     
-    print(f"🔧 Config: {symbol} | {start_date} to {end_date}")
+    print(f"🔧 Config: {symbol} | {backtest_start_date} to {backtest_end_date}")
 
     # --- 1. 모듈 초기화 (Initialization) ---
     try:
@@ -76,7 +77,7 @@ def main():
         print(f"   [FF] Strategy requirements received: {requirements}")
 
         featured_df = feature_factory.create_featured_dataframe(
-            symbol, start_date, end_date, 
+            symbol, data_load_start_date, backtest_end_date, 
             main_tf='5m', 
             requirements=requirements
         )
@@ -98,7 +99,9 @@ def main():
     try:
         backtest_result = backtest_engine.run_custom_period_backtest(
             df=featured_df,
-            strategy=strategy
+            strategy=strategy,
+            start_date=backtest_start_date, # 실제 백테스트 시작 날짜
+            end_date=backtest_end_date     # 실제 백테스트 종료 날짜
         )
         print("🎉 Backtest Completed! (Raw data generated)")
     except Exception as e:
