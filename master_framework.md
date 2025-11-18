@@ -294,7 +294,7 @@ Markdown
 
 #### **3.2.2 세부 과업: 패턴 인식 엔진 (Pattern Recognition Engine)**
 
-`[STATUS: PENDING] ⚪`
+`[STATUS: IN_PROGRESS] 🚧`
 
 * **(v1.0 목표)** `3.2.1`의 S/R 레벨 고도화 이후, '삼각형 수렴', '깃발형' 등 주요 차트 패턴을 탐지하는 엔진을 구현합니다.  
 * **\[Checklist\]**  

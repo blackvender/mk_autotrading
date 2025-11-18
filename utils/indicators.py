@@ -261,3 +261,315 @@ class TechnicalIndicators:
         
         return squeeze_on & is_low_volatility
     # --- [v2.0 지표 추가 완료] ---
+
+    @staticmethod
+    def find_trendlines(df: pd.DataFrame, order: int = 5, min_length: int = 12) -> (List, List):
+        """
+        [v1.1] 추세선을 탐지하고 필터링 및 스코어링합니다.
+        - min_length: 추세선의 최소 길이 (캔들 수)
+        - touches: 추세선이 지나는 극점의 수
+        """
+        support_levels, resistance_levels = __class__.find_local_extrema(df, order)
+        
+        support_points_df = support_levels.dropna().reset_index()
+        support_points_df.columns = ['index', 'price']
+        support_points = [(int(row['index']), row['price']) for _, row in support_points_df.iterrows()]
+
+        resistance_points_df = resistance_levels.dropna().reset_index()
+        resistance_points_df.columns = ['index', 'price']
+        resistance_points = [(int(row['index']), row['price']) for _, row in resistance_points_df.iterrows()]
+
+        support_trendlines = []
+        resistance_trendlines = []
+
+        # 지지 추세선 생성
+        for i in range(len(support_points)):
+            for j in range(i + 1, len(support_points)):
+                p1_idx, p1_price = support_points[i]
+                p2_idx, p2_price = support_points[j]
+                
+                # 1. 최소 길이 필터링
+                if (p2_idx - p1_idx) < min_length:
+                    continue
+
+                # 2. 유효성 검증
+                is_valid = True
+                slope = (p2_price - p1_price) / (p2_idx - p1_idx)
+                intercept = p1_price - slope * p1_idx
+                
+                intermediate_df = df.iloc[p1_idx:p2_idx+1]
+                
+                for k in range(len(intermediate_df)):
+                    idx = intermediate_df.index[k]
+                    price = intermediate_df['low'].iloc[k]
+                    
+                    trendline_price = slope * idx + intercept
+                    if price < trendline_price - (trendline_price * 0.005): # 0.5% 허용치
+                        is_valid = False
+                        break
+                
+                if is_valid:
+                    # 3. 터치 횟수 스코어링
+                    touches = 2
+                    for k in range(i + 1, j):
+                        mid_idx, mid_price = support_points[k]
+                        trendline_price_at_mid = slope * mid_idx + intercept
+                        
+                        # 중간 지점이 추세선에 가까운지 확인 (0.5% 허용치)
+                        if abs(mid_price - trendline_price_at_mid) < (trendline_price_at_mid * 0.005):
+                            touches += 1
+                    
+                    support_trendlines.append({
+                        'points': ((p1_idx, p1_price), (p2_idx, p2_price)),
+                        'slope': slope,
+                        'touches': touches,
+                        'length': p2_idx - p1_idx
+                    })
+
+        # 저항 추세선 생성 (위와 동일한 로직)
+        for i in range(len(resistance_points)):
+            for j in range(i + 1, len(resistance_points)):
+                p1_idx, p1_price = resistance_points[i]
+                p2_idx, p2_price = resistance_points[j]
+
+                if (p2_idx - p1_idx) < min_length:
+                    continue
+
+                is_valid = True
+                slope = (p2_price - p1_price) / (p2_idx - p1_idx)
+                intercept = p1_price - slope * p1_idx
+                
+                intermediate_df = df.iloc[p1_idx:p2_idx+1]
+                
+                for k in range(len(intermediate_df)):
+                    idx = intermediate_df.index[k]
+                    price = intermediate_df['high'].iloc[k]
+                    
+                    trendline_price = slope * idx + intercept
+                    if price > trendline_price + (trendline_price * 0.005): # 0.5% 허용치
+                        is_valid = False
+                        break
+                
+                if is_valid:
+                    touches = 2
+                    for k in range(i + 1, j):
+                        mid_idx, mid_price = resistance_points[k]
+                        trendline_price_at_mid = slope * mid_idx + intercept
+                        if abs(mid_price - trendline_price_at_mid) < (trendline_price_at_mid * 0.005):
+                            touches += 1
+
+                    resistance_trendlines.append({
+                        'points': ((p1_idx, p1_price), (p2_idx, p2_price)),
+                        'slope': slope,
+                        'touches': touches,
+                        'length': p2_idx - p1_idx
+                    })
+
+        return support_trendlines, resistance_trendlines
+
+    @staticmethod
+    def find_triangle_patterns(support_trendlines: List, resistance_trendlines: List, current_index: int) -> List:
+        """
+        [v1.0] 탐지된 지지/저항 추세선을 기반으로 삼각 수렴 패턴을 찾습니다.
+        """
+        patterns = []
+        
+        # 모든 지지/저항 추세선 쌍을 비교
+        for r_tl in resistance_trendlines:
+            for s_tl in support_trendlines:
+                
+                r_p1_idx, r_p1_price = r_tl['points'][0]
+                r_p2_idx, r_p2_price = r_tl['points'][1]
+                s_p1_idx, s_p1_price = s_tl['points'][0]
+                s_p2_idx, s_p2_price = s_tl['points'][1]
+
+                r_slope = r_tl['slope']
+                s_slope = s_tl['slope']
+
+                # 1. 수렴 조건 확인: 저항선은 하락, 지지선은 상승
+                if r_slope >= 0 or s_slope <= 0:
+                    continue
+
+                # 2. 꼭짓점(Apex) 계산
+                r_intercept = r_p1_price - r_slope * r_p1_idx
+                s_intercept = s_p1_price - s_slope * s_p1_idx
+                
+                # 두 직선이 평행하지 않은 경우에만
+                if abs(r_slope - s_slope) < 1e-6:
+                    continue
+                    
+                apex_x = (s_intercept - r_intercept) / (r_slope - s_slope)
+                
+                # 3. 유효성 검증
+                # - 꼭짓점이 현재보다 미래에 있어야 함
+                # - 두 추세선이 너무 멀리서 시작하지 않아야 함 (패턴의 시작점이 비슷해야 함)
+                pattern_start_idx = max(r_p1_idx, s_p1_idx)
+                if apex_x <= current_index or apex_x > current_index + (current_index - pattern_start_idx) * 3:
+                    continue
+
+                # 4. 패턴 분류
+                pattern_type = 'Symmetrical Triangle'
+                # 저항선이 수평에 가까우면 (기울기 절댓값이 작으면)
+                if abs(r_slope) < abs(s_slope) * 0.3:
+                    pattern_type = 'Ascending Triangle'
+                # 지지선이 수평에 가까우면
+                elif abs(s_slope) < abs(r_slope) * 0.3:
+                    pattern_type = 'Descending Triangle'
+                    
+                apex_y = r_slope * apex_x + r_intercept
+                
+                patterns.append({
+                    'pattern_type': pattern_type,
+                    'apex_point': (apex_x, apex_y),
+                    'start_index': pattern_start_idx,
+                    'resistance_line': r_tl['points'],
+                    'support_line': s_tl['points']
+                })
+        return patterns
+
+    @staticmethod
+    def find_wedge_patterns(df: pd.DataFrame, support_trendlines: List, resistance_trendlines: List, current_index: int) -> List:
+        """
+        [v1.1] 상승/하락 쐐기형(Wedge) 패턴을 탐지합니다. (정밀도 개선)
+        """
+        patterns = []
+        
+        for r_tl in resistance_trendlines:
+            for s_tl in support_trendlines:
+                
+                r_slope = r_tl['slope']
+                s_slope = s_tl['slope']
+
+                if abs(r_slope - s_slope) < 1e-6:
+                    continue
+
+                pattern_type = None
+                if r_slope > 0 and s_slope > 0 and s_slope > r_slope:
+                    pattern_type = 'Rising Wedge'
+                elif r_slope < 0 and s_slope < 0 and r_slope < s_slope:
+                    pattern_type = 'Falling Wedge'
+                else:
+                    continue
+
+                r_intercept = r_tl['points'][0][1] - r_slope * r_tl['points'][0][0]
+                s_intercept = s_tl['points'][0][1] - s_slope * s_tl['points'][0][0]
+                
+                apex_x = (s_intercept - r_intercept) / (r_slope - s_slope)
+                
+                pattern_start_idx = max(r_tl['points'][0][0], s_tl['points'][0][0])
+                if apex_x <= current_index or apex_x > current_index + (current_index - pattern_start_idx) * 3:
+                    continue
+                
+                # [v1.1 개선] 가격이 채널 내에 포함되는지 검증
+                channel_start = pattern_start_idx
+                channel_end = int(apex_x) if apex_x < current_index else current_index
+                
+                if channel_start >= channel_end: continue
+
+                is_contained = True
+                channel_df = df.iloc[channel_start:channel_end+1]
+
+                for k in range(len(channel_df)):
+                    idx = channel_df.index[k]
+                    price_high = channel_df['high'].iloc[k]
+                    price_low = channel_df['low'].iloc[k]
+                    
+                    res_line_price = r_slope * idx + r_intercept
+                    sup_line_price = s_slope * idx + s_intercept
+                    
+                    if price_high > res_line_price + (res_line_price*0.001) or price_low < sup_line_price - (sup_line_price*0.001):
+                        is_contained = False
+                        break
+                
+                if is_contained:
+                    apex_y = r_slope * apex_x + r_intercept
+                    patterns.append({
+                        'pattern_type': pattern_type,
+                        'apex_point': (apex_x, apex_y),
+                        'start_index': pattern_start_idx,
+                        'resistance_line': r_tl,
+                        'support_line': s_tl
+                    })
+        return patterns
+
+    @staticmethod
+    def find_flag_patterns(df: pd.DataFrame, support_trendlines: List, resistance_trendlines: List, flagpole_threshold: float = 0.15, flagpole_period: int = 10) -> List:
+        """
+        [v1.1] 불(Bull)/베어(Bear) 플래그 패턴을 탐지합니다. (정밀도 개선)
+        1. Flagpole(깃대) 탐지: 짧은 기간 내 급격한 가격 변화.
+        2. Flag(깃발) 탐지: 이후 나타나는 평행한 채널(조정 구간).
+        """
+        patterns = []
+        
+        # 1. Flagpole 탐지
+        price_change = df['close'].pct_change(periods=flagpole_period)
+        
+        for i in range(flagpole_period, len(df)):
+            change = price_change.iloc[i]
+            is_bull_flagpole = change > flagpole_threshold
+            is_bear_flagpole = change < -flagpole_threshold
+
+            if not (is_bull_flagpole or is_bear_flagpole):
+                continue
+
+            flagpole_start_idx = i - flagpole_period
+            flagpole_end_idx = i
+            
+            # 2. 깃발(채널) 탐지
+            for r_tl in resistance_trendlines:
+                for s_tl in support_trendlines:
+                    # 두 추세선이 깃대 이후에 시작되어야 함
+                    if r_tl['points'][0][0] < flagpole_end_idx or s_tl['points'][0][0] < flagpole_end_idx:
+                        continue
+                    
+                    # 두 추세선이 너무 길면 안됨 (플래그는 보통 짧음)
+                    if r_tl['length'] > 60 or s_tl['length'] > 60:
+                        continue
+
+                    # [v1.1 개선] 더 엄격한 평행 조건 (기울기 차이가 20% 미만)
+                    if abs(r_tl['slope'] - s_tl['slope']) > abs(s_tl['slope']) * 0.2:
+                        continue
+                        
+                    # Bull Flag는 하락 채널, Bear Flag는 상승 채널이어야 함
+                    if is_bull_flagpole and (r_tl['slope'] >= 0 or s_tl['slope'] >= 0):
+                        continue
+                    if is_bear_flagpole and (r_tl['slope'] <= 0 or s_tl['slope'] <= 0):
+                        continue
+
+                    # [v1.1 개선] 가격이 채널 내에 포함되는지 검증
+                    channel_start = min(r_tl['points'][0][0], s_tl['points'][0][0])
+                    channel_end = max(r_tl['points'][1][0], s_tl['points'][1][0])
+                    
+                    if channel_start >= channel_end: continue
+
+                    is_contained = True
+                    channel_df = df.iloc[channel_start:channel_end+1]
+                    
+                    r_intercept = r_tl['points'][0][1] - r_tl['slope'] * r_tl['points'][0][0]
+                    s_intercept = s_tl['points'][0][1] - s_tl['slope'] * s_tl['points'][0][0]
+
+                    for k in range(len(channel_df)):
+                        idx = channel_df.index[k]
+                        price_high = channel_df['high'].iloc[k]
+                        price_low = channel_df['low'].iloc[k]
+                        
+                        res_line_price = r_tl['slope'] * idx + r_intercept
+                        sup_line_price = s_tl['slope'] * idx + s_intercept
+                        
+                        if price_high > res_line_price + (res_line_price*0.01) or price_low < sup_line_price - (sup_line_price*0.01):
+                            is_contained = False
+                            break
+                    
+                    if is_contained:
+                        patterns.append({
+                            'pattern_type': 'Bull Flag' if is_bull_flagpole else 'Bear Flag',
+                            'flagpole': (flagpole_start_idx, flagpole_end_idx),
+                            'channel': (r_tl, s_tl),
+                            'channel_start_idx': channel_start
+                        })
+                        # 한 깃대에 대해 가장 먼저 찾은 유효한 채널 하나만 사용
+                        break 
+                if patterns and patterns[-1]['flagpole'] == (flagpole_start_idx, flagpole_end_idx):
+                    break
+
+        return patterns
